@@ -45,9 +45,46 @@ $jobs = @(
     @("mockups\desktop.html",        (Join-Path $shots "desktop.png"),               1000,  700, 1.6, $false),
     # README hero + GitHub social preview
     @("hero.html",                   (Join-Path $root  "assets\hero.png"),           1280,  640, 2, $false),
-    @("hero.html",                   (Join-Path $brand "social-preview.png"),        1280,  640, 1, $false)
+    @("hero.html",                   (Join-Path $brand "social-preview.png"),        1280,  640, 1, $false),
+    # Setup wizard side panel (Inno Setup picks the file closest to the DPI)
+    @("installer.html",              (Join-Path $brand "installer\wizard-262.png"),   164,  314, 1.6, $false),
+    @("installer.html",              (Join-Path $brand "installer\wizard-541.png"),   164,  314, 3.3, $false)
 )
+New-Item -ItemType Directory -Force (Join-Path $brand "installer") | Out-Null
 foreach ($j in $jobs) {
     if ($Only -and ($j[0] -notlike "*$Only*")) { continue }
     Render $j[0] $j[1] $j[2] $j[3] $j[4] -Transparent:$j[5]
+}
+
+# logo.ico (setup and Apps & Features icon): PNG frames downscaled from logo-512.png.
+if (-not $Only -or "logo.ico" -like "*$Only*" -or "installer" -like "*$Only*") {
+    Add-Type -AssemblyName System.Drawing
+    $srcPng = [System.Drawing.Image]::FromFile((Join-Path $brand "logo-512.png"))
+    $frames = foreach ($s in 16, 20, 24, 32, 40, 48, 64, 96, 128, 256) {
+        $bmp = New-Object System.Drawing.Bitmap $s, $s
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $g.DrawImage($srcPng, 0, 0, $s, $s)
+        $g.Dispose()
+        $ms = New-Object System.IO.MemoryStream
+        $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bmp.Dispose()
+        [pscustomobject]@{ Size = $s; Bytes = $ms.ToArray() }
+    }
+    $srcPng.Dispose()
+    $ico = New-Object System.IO.MemoryStream
+    $w = New-Object System.IO.BinaryWriter $ico
+    $w.Write([uint16]0); $w.Write([uint16]1); $w.Write([uint16]$frames.Count)
+    $offset = 6 + 16 * $frames.Count
+    foreach ($f in $frames) {
+        $dim = if ($f.Size -ge 256) { 0 } else { $f.Size }
+        $w.Write([byte]$dim); $w.Write([byte]$dim); $w.Write([byte]0); $w.Write([byte]0)
+        $w.Write([uint16]1); $w.Write([uint16]32); $w.Write([uint32]$f.Bytes.Length); $w.Write([uint32]$offset)
+        $offset += $f.Bytes.Length
+    }
+    foreach ($f in $frames) { $w.Write($f.Bytes) }
+    $w.Flush()
+    [System.IO.File]::WriteAllBytes((Join-Path $brand "logo.ico"), $ico.ToArray())
+    Write-Host "logo.ico                                 $($frames.Count) frames"
 }

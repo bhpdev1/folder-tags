@@ -1,24 +1,26 @@
-# Installs (or updates) the shell extension for the current user, then restarts Explorer.
+# Installs (or updates) the shell extension for all users from a source build, then restarts
+# Explorer. End users should run the FolderTags setup instead (installer/FolderTags.iss).
+# Requires administrator rights (self-elevates once).
 $ErrorActionPreference = "Stop"
 $fr = (Get-UICulture).TwoLetterISOLanguageName -eq "fr"
 function T([string]$en, [string]$frText) { if ($fr) { $frText } else { $en } }
 
-# Look for FolderTags.dll in same folder (release bundle) or build folder (repo)
-$src = Join-Path $PSScriptRoot "FolderTags.dll"
-if (-not (Test-Path $src)) {
-    $root = Split-Path $PSScriptRoot -Parent
-    $src = Join-Path $root "build\FolderTags.dll"
-}
-if (-not (Test-Path $src)) {
-    $buildScript = Join-Path $PSScriptRoot "build.ps1"
-    if (Test-Path $buildScript) {
-        & $buildScript
-    } else {
-        throw (T "FolderTags.dll not found." "FolderTags.dll introuvable.")
-    }
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    $p = Start-Process powershell -Verb RunAs -Wait -PassThru `
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    exit $p.ExitCode
 }
 
-$dest = Join-Path $env:LOCALAPPDATA "FolderTags"
+# FolderTags.dll in the same folder (release bundle) or in the build folder (repo)
+$src = Join-Path $PSScriptRoot "FolderTags.dll"
+if (-not (Test-Path $src)) { $src = Join-Path (Split-Path $PSScriptRoot -Parent) "build\FolderTags.dll" }
+if (-not (Test-Path $src)) {
+    & (Join-Path $PSScriptRoot "build.ps1")
+}
+
+$dest = Join-Path $env:ProgramFiles "FolderTags"
 New-Item -ItemType Directory -Force $dest | Out-Null
 $dll = Join-Path $dest "FolderTags.dll"
 
@@ -26,30 +28,27 @@ $dll = Join-Path $dest "FolderTags.dll"
 # A loaded DLL can still be renamed: move it aside, copy the new one, restart Explorer.
 Get-ChildItem $dest -Filter "FolderTags.*.old" -ErrorAction SilentlyContinue |
     Remove-Item -Force -ErrorAction SilentlyContinue
-try {
-    Copy-Item $src $dll -Force
-} catch {
+if (Test-Path $dll) {
     Move-Item $dll (Join-Path $dest ("FolderTags.{0}.old" -f [DateTime]::Now.Ticks)) -Force
-    Copy-Item $src $dll -Force
-    Write-Host (T "DLL in use, replacing it on restart..." "DLL verrouillee, remplacement en differe...")
 }
+Copy-Item $src $dll -Force
 
+# Registers the COM classes, menu handlers, overlays and Tags pane under HKLM, and removes
+# the per-user registration of v1.x.
 $p = Start-Process "$env:SystemRoot\System32\regsvr32.exe" -ArgumentList "/s `"$dll`"" -Wait -PassThru
 if ($p.ExitCode -ne 0) { throw "regsvr32 failed ($($p.ExitCode))" }
+
+# v1.x copy of the DLL (per-user install); the tag data next to it is kept.
+$legacy = Join-Path $env:LOCALAPPDATA "FolderTags"
+Get-ChildItem $legacy -Filter "FolderTags*.dll" -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem $legacy -Filter "FolderTags.*.old" -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 Write-Host ((T "FolderTags installed: " "FolderTags installe : ") + $dll)
 
-# Register icon overlays in HKLM if install-overlays.ps1 is available
-$overlaysScript = Join-Path $PSScriptRoot "install-overlays.ps1"
-if (Test-Path $overlaysScript) {
-    try {
-        & $overlaysScript
-    } catch {
-        Write-Warning ((T "Overlay registration postponed: " "Enregistrement des overlays reporte : ") + $_.Exception.Message)
-    }
-}
-
-Write-Host (T "Restarting Explorer to reload overlays..." "Redemarrage de l'Explorateur pour recharger les overlays...")
+# Windows restarts the shell by itself (AutoRestartShell), unelevated.
+Write-Host (T "Restarting Explorer..." "Redemarrage de l'Explorateur...")
 Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 3
 if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }
-Write-Host (T "Explorer restarted." "Explorateur redemarre avec succes.")
+Write-Host (T "Explorer restarted." "Explorateur redemarre.")

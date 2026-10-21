@@ -14,8 +14,12 @@ std::wstring WarmupDir(int tag);
 
 void Update(const std::wstring& path, unsigned oldMask, unsigned newMask);
 
-// Creates icons, the Tags folder tree and registers the navigation-pane entry (HKCU).
+// Creates the current user's icons and Tags folder tree, and registers the navigation-pane
+// entry for every user (HKLM).
 HRESULT Setup();
+// Creates the current user's icons and Tags folder tree if missing (users other than the one
+// who installed FolderTags). Runs once per process.
+void EnsureUserData();
 void Teardown();
 
 }  // namespace index

@@ -359,13 +359,22 @@ void ScanExisting(const std::wstring& dir, int depth) {
     FindClose(f);
 }
 
-HRESULT SetReg(const std::wstring& key, const wchar_t* name, const std::wstring& v) {
-    return HRESULT_FROM_WIN32(RegSetKeyValueW(HKEY_CURRENT_USER, key.c_str(), name, REG_SZ,
-                                              v.c_str(), (DWORD)((v.size() + 1) * 2)));
+HRESULT SetReg(HKEY root, const std::wstring& key, const wchar_t* name, const std::wstring& v,
+               DWORD type = REG_SZ) {
+    return HRESULT_FROM_WIN32(RegSetKeyValueW(root, key.c_str(), name, type, v.c_str(),
+                                              (DWORD)((v.size() + 1) * 2)));
 }
-HRESULT SetReg(const std::wstring& key, const wchar_t* name, DWORD v) {
-    return HRESULT_FROM_WIN32(
-        RegSetKeyValueW(HKEY_CURRENT_USER, key.c_str(), name, REG_DWORD, &v, sizeof(v)));
+HRESULT SetReg(HKEY root, const std::wstring& key, const wchar_t* name, DWORD v) {
+    return HRESULT_FROM_WIN32(RegSetKeyValueW(root, key.c_str(), name, REG_DWORD, &v, sizeof(v)));
+}
+
+const wchar_t kNameSpaceKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\";
+const wchar_t kHideDesktopIconsKey[] =
+    L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel";
+
+void DeleteNavPane(HKEY root) {
+    RegDeleteTreeW(root, (std::wstring(L"Software\\Classes\\CLSID\\") + kNavClsid).c_str());
+    RegDeleteTreeW(root, (std::wstring(kNameSpaceKey) + kNavClsid).c_str());
 }
 
 std::wstring TagIconPath(int tag) {
@@ -410,7 +419,8 @@ void Update(const std::wstring& path, unsigned oldMask, unsigned newMask) {
     }
 }
 
-HRESULT Setup() {
+// Per-user part: icons, warm-up folders and the Tags folder tree under %LOCALAPPDATA%.
+void SetupUserData() {
     draw::EnsureGdiplus();
     const std::wstring data = DataDir();
     CreateDirectoryW(data.c_str(), nullptr);
@@ -443,23 +453,9 @@ HRESULT Setup() {
         }
     }
 
-    // Navigation pane entry ("Tags" under Accès rapide), per user. Uses shell32's
-    // delegate folder: no code of ours is involved in browsing it.
-    const std::wstring k = std::wstring(L"Software\\Classes\\CLSID\\") + kNavClsid;
-    SetReg(k, nullptr, L"Tags");
-    SetReg(k, L"System.IsPinnedToNameSpaceTree", 1);
-    SetReg(k, L"SortOrderIndex", 0x41);
-    SetReg(k + L"\\DefaultIcon", nullptr, rootIcon);
-    SetReg(k + L"\\InProcServer32", nullptr, L"shell32.dll");
-    SetReg(k + L"\\Instance", L"CLSID", L"{0E5AAE11-A475-4c5b-AB00-C66DE400274E}");
-    SetReg(k + L"\\Instance\\InitPropertyBag", L"Attributes", 0x11);
-    SetReg(k + L"\\Instance\\InitPropertyBag", L"TargetFolderPath", TagsRoot());
-    SetReg(k + L"\\ShellFolder", L"FolderValueFlags", 0x28);
-    SetReg(k + L"\\ShellFolder", L"Attributes", 0xF080004D);
-    SetReg(std::wstring(L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\") +
-               kNavClsid, nullptr, L"Tags");
-    SetReg(L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel",
-           kNavClsid, 1);
+    // The namespace entry is registered for the whole machine, but hiding it from the desktop
+    // is a per-user setting.
+    SetReg(HKEY_CURRENT_USER, kHideDesktopIconsKey, kNavClsid, 1);
 
     // Pick up tags set before the index existed.
     ScanExisting(KnownFolder(FOLDERID_Desktop), 2);
@@ -467,18 +463,52 @@ HRESULT Setup() {
     ScanExisting(KnownFolder(FOLDERID_Documents), 2);
 
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+}
+
+void EnsureUserData() {
+    static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(
+        &once,
+        [](PINIT_ONCE, PVOID, PVOID*) -> BOOL {
+            bool complete = PathFileExistsW(IconPath(L"tags").c_str()) != FALSE;
+            for (int i = 0; complete && i < tags::kCount; ++i)
+                complete = PathFileExistsW(OverlayIconPath(i).c_str()) != FALSE;
+            if (!complete) SetupUserData();
+            return TRUE;
+        },
+        nullptr, nullptr);
+}
+
+HRESULT Setup() {
+    SetupUserData();
+
+    // Navigation pane entry ("Tags" under Quick Access) for every user: the paths expand to
+    // each user's own %LOCALAPPDATA%. Uses shell32's delegate folder: no code of ours is
+    // involved in browsing it.
+    DeleteNavPane(HKEY_CURRENT_USER);  // v1.x per-user entry
+    const HKEY m = HKEY_LOCAL_MACHINE;
+    const std::wstring k = std::wstring(L"Software\\Classes\\CLSID\\") + kNavClsid;
+    HRESULT hr = SetReg(m, k, nullptr, L"Tags");
+    if (FAILED(hr)) return hr;
+    SetReg(m, k, L"System.IsPinnedToNameSpaceTree", 1);
+    SetReg(m, k, L"SortOrderIndex", 0x41);
+    SetReg(m, k + L"\\DefaultIcon", nullptr, L"%LOCALAPPDATA%\\FolderTags\\icons\\tags.ico",
+           REG_EXPAND_SZ);
+    SetReg(m, k + L"\\InProcServer32", nullptr, L"shell32.dll");
+    SetReg(m, k + L"\\Instance", L"CLSID", L"{0E5AAE11-A475-4c5b-AB00-C66DE400274E}");
+    SetReg(m, k + L"\\Instance\\InitPropertyBag", L"Attributes", 0x11);
+    SetReg(m, k + L"\\Instance\\InitPropertyBag", L"TargetFolderPath",
+           L"%LOCALAPPDATA%\\FolderTags\\Tags", REG_EXPAND_SZ);
+    SetReg(m, k + L"\\ShellFolder", L"FolderValueFlags", 0x28);
+    SetReg(m, k + L"\\ShellFolder", L"Attributes", 0xF080004D);
+    SetReg(m, std::wstring(kNameSpaceKey) + kNavClsid, nullptr, L"Tags");
     return S_OK;
 }
 
 void Teardown() {
-    RegDeleteTreeW(HKEY_CURRENT_USER,
-                   (std::wstring(L"Software\\Classes\\CLSID\\") + kNavClsid).c_str());
-    RegDeleteTreeW(HKEY_CURRENT_USER,
-                   (std::wstring(L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\") +
-                    kNavClsid).c_str());
-    RegDeleteKeyValueW(HKEY_CURRENT_USER,
-                       L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel",
-                       kNavClsid);
+    DeleteNavPane(HKEY_LOCAL_MACHINE);
+    DeleteNavPane(HKEY_CURRENT_USER);  // v1.x per-user entry
+    RegDeleteKeyValueW(HKEY_CURRENT_USER, kHideDesktopIconsKey, kNavClsid);
 }
 
 }  // namespace index

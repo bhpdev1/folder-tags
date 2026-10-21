@@ -54,10 +54,29 @@ const wchar_t* const kHandlerKeys[] = {
 const wchar_t kLegacyHandlerKey[] =
     L"Software\\\\Classes\\\\AllFilesystemObjects\\\\shellex\\\\ContextMenuHandlers\\\\ FolderTags";
 
+const wchar_t kOverlayRoot[] =
+    L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers\\";
+
+// Windows only uses the first ~11 overlay handlers in alphabetical order: the two leading
+// spaces sort ours before OneDrive (" OneDrive1".." OneDrive7").
+std::wstring OverlayKey(int tag, const wchar_t* label) {
+    return std::wstring(kOverlayRoot) + L"  FolderTags" + std::to_wstring(tag) + label;
+}
+
 HRESULT SetValue(const std::wstring& key, const wchar_t* name, const std::wstring& value) {
-    return HRESULT_FROM_WIN32(RegSetKeyValueW(HKEY_CURRENT_USER, key.c_str(), name, REG_SZ,
+    return HRESULT_FROM_WIN32(RegSetKeyValueW(HKEY_LOCAL_MACHINE, key.c_str(), name, REG_SZ,
                                               value.c_str(),
                                               (DWORD)((value.size() + 1) * sizeof(wchar_t))));
+}
+
+// Removes the COM classes and menu handlers under `root`. v1.x registered them in HKCU, where
+// they would shadow the HKLM registration for an unelevated Explorer.
+void DeleteRegistration(HKEY root) {
+    for (auto key : kHandlerKeys) RegDeleteTreeW(root, key);
+    RegDeleteTreeW(root, kLegacyHandlerKey);
+    RegDeleteTreeW(root, (std::wstring(L"Software\\Classes\\CLSID\\") + kClsidStr).c_str());
+    for (int i = 0; i < tags::kCount; ++i)
+        RegDeleteTreeW(root, (L"Software\\Classes\\CLSID\\" + OverlayClsidString(i)).c_str());
 }
 
 HRESULT RegisterComClass(const std::wstring& clsid, const wchar_t* name, const wchar_t* dll) {
@@ -94,19 +113,23 @@ STDAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void** ppv) {
 
 STDAPI DllCanUnloadNow() { return g_dllRefs == 0 ? S_OK : S_FALSE; }
 
-// Per-user registration (HKCU): no administrator rights needed.
-// Overlay identifiers must additionally be listed under HKLM (scripts/install-overlays.ps1).
+// Per-machine registration (HKLM, administrator rights). Explorer ignores per-user (HKCU) shell
+// extensions when it runs elevated, e.g. with UAC turned off; HKLM works in both cases.
 STDAPI DllRegisterServer() {
     wchar_t path[MAX_PATH];
     GetModuleFileNameW(g_hInst, path, MAX_PATH);
 
+    DeleteRegistration(HKEY_CURRENT_USER);
+    RegDeleteTreeW(HKEY_LOCAL_MACHINE, kLegacyHandlerKey);
     HRESULT hr = RegisterComClass(kClsidStr, L"FolderTags Context Menu", path);
-    RegDeleteTreeW(HKEY_CURRENT_USER, kLegacyHandlerKey);
     for (auto key : kHandlerKeys)
         if (SUCCEEDED(hr)) hr = SetValue(key, nullptr, kClsidStr);
     for (int i = 0; SUCCEEDED(hr) && i < tags::kCount; ++i) {
-        const std::wstring name = std::wstring(L"FolderTags Overlay ") + tags::kTags[i].labelEn;
+        const auto& t = tags::kTags[i];
+        const std::wstring name = std::wstring(L"FolderTags Overlay ") + t.labelEn;
         hr = RegisterComClass(OverlayClsidString(i), name.c_str(), path);
+        RegDeleteTreeW(HKEY_LOCAL_MACHINE, OverlayKey(i, t.labelFr).c_str());  // v1.0.0 key names
+        if (SUCCEEDED(hr)) hr = SetValue(OverlayKey(i, t.labelEn), nullptr, OverlayClsidString(i));
     }
     if (SUCCEEDED(hr)) hr = index::Setup();
     if (SUCCEEDED(hr)) SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
@@ -114,13 +137,12 @@ STDAPI DllRegisterServer() {
 }
 
 STDAPI DllUnregisterServer() {
-    for (auto key : kHandlerKeys) RegDeleteTreeW(HKEY_CURRENT_USER, key);
-    RegDeleteTreeW(HKEY_CURRENT_USER, kLegacyHandlerKey);
-    RegDeleteTreeW(HKEY_CURRENT_USER,
-                   (std::wstring(L"Software\\Classes\\CLSID\\") + kClsidStr).c_str());
-    for (int i = 0; i < tags::kCount; ++i)
-        RegDeleteTreeW(HKEY_CURRENT_USER,
-                       (L"Software\\Classes\\CLSID\\" + OverlayClsidString(i)).c_str());
+    DeleteRegistration(HKEY_LOCAL_MACHINE);
+    DeleteRegistration(HKEY_CURRENT_USER);
+    for (int i = 0; i < tags::kCount; ++i) {
+        RegDeleteTreeW(HKEY_LOCAL_MACHINE, OverlayKey(i, tags::kTags[i].labelEn).c_str());
+        RegDeleteTreeW(HKEY_LOCAL_MACHINE, OverlayKey(i, tags::kTags[i].labelFr).c_str());
+    }
     index::Teardown();
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
     return S_OK;

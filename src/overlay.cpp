@@ -99,6 +99,7 @@ public:
     }
 
     IFACEMETHODIMP GetOverlayInfo(PWSTR iconFile, int cch, int* index, DWORD* flags) override {
+        index::EnsureUserData();  // Explorer loads the icon file right after this call
         const std::wstring p = index::OverlayIconPath(tag_);
         if (FAILED(StringCchCopyW(iconFile, cch, p.c_str()))) return E_FAIL;
         *index = 0;

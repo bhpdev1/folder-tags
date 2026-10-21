@@ -71,15 +71,17 @@ On Windows, organizing folders has historically meant custom icons or third-part
 
 ### 🚀 Installation & Usage
 
-#### Option A: Quick Install (Pre-built Release - Recommended)
+#### Option A: Setup (Recommended)
 No compiler or developer tools required:
-1. Download the latest `FolderTags-v1.1.0.zip` from [Releases](https://github.com/bhpdev1/FolderTags/releases).
-2. Extract the ZIP archive to a folder.
-3. Double-click **`install.bat`** (or right-click `install.ps1` and select *Run with PowerShell*).
-4. Accept the one-time administrator prompt (UAC): it registers the 7 badge overlays for Explorer.
-5. Explorer restarts automatically — you can now right-click any folder to tag it!
+1. Download the latest `FolderTags-Setup-1.2.0.exe` from [Releases](https://github.com/bhpdev1/FolderTags/releases).
+2. Run it and accept the administrator prompt (UAC): FolderTags is installed for all users in `Program Files`.
+3. Explorer restarts automatically — you can now right-click any folder to tag it!
 
-To uninstall anytime, simply double-click **`uninstall.bat`**.
+To uninstall, use *Settings → Apps → Installed apps → FolderTags*. Tags already set on folders are kept.
+
+> [!NOTE]
+> The setup is not code-signed yet, so SmartScreen may show *Windows protected your PC*: click *More info → Run anyway*.
+> Upgrading from the v1.x ZIP? Just run the setup: it removes the old per-user install and keeps your tags.
 
 > [!NOTE]
 > Windows only shows about 11 third-party icon overlays system-wide. FolderTags uses 7 of them and sorts ahead of OneDrive, so some of OneDrive's sync badges may stop showing.
@@ -106,7 +108,9 @@ Run the provided automated PowerShell scripts:
 .\scripts\install.ps1
 ```
 
-> **Note**: `install.ps1` registers the COM classes in `HKEY_CURRENT_USER`, then self-elevates once to list the 7 overlays under `HKEY_LOCAL_MACHINE`, and restarts `explorer.exe` to refresh the icon cache.
+> **Note**: `install.ps1` self-elevates once, copies the DLL to `Program Files\FolderTags`, registers the COM classes, context menu, 7 overlays and *Tags* pane under `HKEY_LOCAL_MACHINE`, and restarts `explorer.exe` to refresh the icon cache. Per-machine registration keeps working when Explorer runs elevated (UAC off), where per-user (`HKEY_CURRENT_USER`) shell extensions are ignored.
+>
+> To build the setup: `.\scripts\build-installer.ps1 -Version 1.2.0` (needs [Inno Setup 6.7+](https://jrsoftware.org/isinfo.php)) → `dist\FolderTags-Setup-1.2.0.exe`.
 
 ##### 3. Uninstallation
 To completely remove the extension:
@@ -165,15 +169,17 @@ Captures : voir la section [Screenshots](#-screenshots) (maquettes fidèles au r
 
 ### 🚀 Installation et Utilisation
 
-#### Option A : Installation rapide (Release pré-compilée - Recommandé)
+#### Option A : Installeur (Recommandé)
 Aucun compilateur ni outil de développement requis :
-1. Téléchargez la dernière version `FolderTags-v1.1.0.zip` dans l'onglet [Releases](https://github.com/bhpdev1/FolderTags/releases).
-2. Décompressez l'archive ZIP dans un dossier.
-3. Double-cliquez sur **`install.bat`** (ou clic droit sur `install.ps1` → *Exécuter avec PowerShell*).
-4. Acceptez l'invite administrateur (UAC), demandée une seule fois pour enregistrer les 7 pastilles dans l'Explorateur.
-5. L'Explorateur redémarre automatiquement — vous pouvez dès à présent faire un clic droit sur vos dossiers pour leur attribuer une couleur !
+1. Téléchargez la dernière version `FolderTags-Setup-1.2.0.exe` dans l'onglet [Releases](https://github.com/bhpdev1/FolderTags/releases).
+2. Lancez-le et acceptez l'invite administrateur (UAC) : FolderTags s'installe pour tous les utilisateurs dans `Program Files`.
+3. L'Explorateur redémarre automatiquement — vous pouvez dès à présent faire un clic droit sur vos dossiers pour leur attribuer une couleur !
 
-Pour désinstaller à tout moment, double-cliquez simplement sur **`uninstall.bat`**.
+Pour désinstaller : *Paramètres → Applications → Applications installées → FolderTags*. Les étiquettes déjà posées sur vos dossiers sont conservées.
+
+> [!NOTE]
+> L'installeur n'est pas encore signé : SmartScreen peut afficher *Windows a protégé votre ordinateur* → *Informations complémentaires → Exécuter quand même*.
+> Vous avez la v1.x en ZIP ? Lancez simplement l'installeur : il retire l'ancienne installation par utilisateur et garde vos étiquettes.
 
 > [!NOTE]
 > Windows n'affiche qu'environ 11 overlays d'icônes tiers sur tout le système. FolderTags en utilise 7 et passe devant OneDrive : certains badges de synchronisation OneDrive peuvent ne plus s'afficher.

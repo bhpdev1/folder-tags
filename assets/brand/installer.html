@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<!-- FolderTags setup wizard side panel. Logical size 164x314 (aspect ratio required by Inno Setup's
+     WizardImageFile). Rendered by scripts/render-brand.ps1 -> assets/brand/installer/wizard-*.png.
+     Dark on purpose: it reads well with both the light and the dark wizard. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --red: #F0524F; --orange: #F69B30; --yellow: #F7CB3F; --green: #62C255;
+    --blue: #388AF0; --purple: #B063D6; --gray: #98989D;
+    --font: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 164px; height: 314px; overflow: hidden; background: #0B0D14; }
+  body { position: relative; font-family: var(--font); color: #F3F4F7; -webkit-font-smoothing: antialiased; }
+
+  .wall {
+    position: absolute; inset: -20px;
+    background: url("wallpaper.jpg") 70% 50% / cover no-repeat;
+    filter: blur(6px) saturate(.9);
+  }
+  .shade {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 70% at 50% 30%, rgba(11,13,20,.35) 0%, rgba(11,13,20,.82) 70%),
+      linear-gradient(180deg, rgba(11,13,20,.2) 0%, rgba(11,13,20,.92) 100%);
+  }
+  .content {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    padding-top: 74px;
+  }
+  .content img { width: 76px; height: 76px; filter: drop-shadow(0 8px 14px rgba(0,0,0,.45)); }
+  h1 { margin-top: 14px; font-size: 19px; font-weight: 600; letter-spacing: -.3px; }
+  .dots { margin-top: 12px; display: flex; gap: 6px; }
+  .dots span {
+    width: 9px; height: 9px; border-radius: 50%;
+    box-shadow: 0 0 0 1.5px rgba(255,255,255,.92), 0 1px 3px rgba(0,0,0,.45);
+  }
+  .foot {
+    position: absolute; left: 0; right: 0; bottom: 18px; text-align: center;
+    font-size: 9.5px; letter-spacing: .3px; color: rgba(233,236,242,.55);
+  }
+</style>
+</head>
+<body>
+  <div class="wall"></div>
+  <div class="shade"></div>
+  <div class="content">
+    <img src="logo.svg" alt="">
+    <h1>FolderTags</h1>
+    <div class="dots">
+      <span style="background: var(--red)"></span>
+      <span style="background: var(--orange)"></span>
+      <span style="background: var(--yellow)"></span>
+      <span style="background: var(--green)"></span>
+      <span style="background: var(--blue)"></span>
+      <span style="background: var(--purple)"></span>
+      <span style="background: var(--gray)"></span>
+    </div>
+  </div>
+  <div class="foot">Finder-style tags for Windows</div>
+</body>
+</html>
