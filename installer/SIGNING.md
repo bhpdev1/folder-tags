@@ -14,7 +14,10 @@ are the maintainer's.
 1. Check the [conditions](https://signpath.org/terms): OSI license (GPLv3 ✓), public
    repository, no proprietary code, maintained and documented project, uninstaller provided
    (✓ setup), no data sent anywhere (✓ privacy policy in the README).
-2. Turn on multi-factor authentication on GitHub (required for every team member).
+   The project must also be **already released in the form to be signed**: publish the
+   unsigned setup in a GitHub release first (the workflow builds it without SignPath settings).
+2. Turn on multi-factor authentication on GitHub, and later on SignPath (required for every
+   team member).
 3. Apply at <https://signpath.org/apply.html> with the repository URL. The README already
    contains the required *Code signing policy* section.
 
@@ -27,11 +30,15 @@ In the SignPath project created for FolderTags:
 - Create two **artifact configurations**. `actions/upload-artifact` uploads a ZIP, so the root
   element is `<zip-file>`:
 
-  `dll`
+  `binaries`: the DLL and the uninstaller, both embedded in the setup
   ```xml
   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
     <zip-file>
       <pe-file path="FolderTags.dll" product-name="FolderTags">
+        <authenticode-sign />
+      </pe-file>
+      <!-- Inno Setup uninstaller, uninst-<version>-<hash>.e32 uploaded as .exe -->
+      <pe-file path="uninst-*.exe">
         <authenticode-sign />
       </pe-file>
     </zip-file>
@@ -48,8 +55,9 @@ In the SignPath project created for FolderTags:
     </zip-file>
   </artifact-configuration>
   ```
-  No `product-name` restriction on the setup: Inno Setup pads its version strings with spaces
-  (`"FolderTags"` is stored as 60 characters), which an exact match would reject.
+  No `product-name` restriction on the setup and the uninstaller: Inno Setup pads its version
+  strings with spaces (`"FolderTags"` is stored as 60 characters), which an exact match would
+  reject.
   Check the exact syntax in the SignPath editor before saving; it validates the XML.
 - Note the signing policy slug (usually `release-signing`, plus `test-signing` for trials).
 
@@ -68,9 +76,11 @@ In the SignPath project created for FolderTags:
 ## 4. Release
 
 - Push a tag `v1.2.0` (or run *Actions → Release → Run workflow* with *sign* checked).
-- Approve the two signing requests (DLL, then setup) in SignPath.
-- Download the `FolderTags-1.2.0` artifact and check the signature:
-  `Get-AuthenticodeSignature .\FolderTags-Setup-1.2.0.exe`.
+- Approve the two signing requests (DLL and uninstaller, then setup) in SignPath, each within
+  an hour: the job fails after that.
+- Download the `FolderTags-1.2.0` artifact and check the signatures:
+  `Get-ChildItem -Recurse .\FolderTags-1.2.0 -File | Get-AuthenticodeSignature`.
+  After installing, `C:\Program Files\FolderTags\unins000.exe` must be signed too.
 - Attach the setup to the GitHub release. Its notes must mention the *Code signing policy*
   (a link to the README section is enough).
 
@@ -84,10 +94,15 @@ In Partner Center (free individual account): *New product → EXE or MSI app*.
   file must not change afterwards).
 - Silent install switches: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`
 - Architecture: x64. Language: English and French.
+- Installer handling ([Inno Setup exit codes](https://jrsoftware.org/ishelp/topic_setupexitcodes.htm)):
+  `0` installation successful, `2` and `5` cancelled by user, `8` reboot required; `1`, `3`,
+  `4` and `7` as custom failures pointing to that page.
 
-## Known gap
+## How the uninstaller gets signed
 
-Inno Setup writes the uninstaller (`unins000.exe`) at install time from code inside the
-setup; it is only signed when the setup is compiled with a `SignTool`. If certification
-rejects the unsigned uninstaller, add a `SignTool` that submits it to SignPath during
-compilation (Inno Setup's `SignedUninstaller` mechanism).
+Inno Setup writes `unins000.exe` at install time from code inside the setup, so signing the
+setup does not sign it. With `-SignedUninstallerDir`, `build-installer.ps1` turns on Inno
+Setup's `SignedUninstaller` mode: the first compile writes the unsigned uninstaller as
+`uninst-<version>-<hash>.e32` and stops (exit code 3); once that file is signed, the next
+compile embeds its signature, and every installed `unins000.exe` carries it. The workflow
+signs that file together with the DLL.

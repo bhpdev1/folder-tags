@@ -1,7 +1,8 @@
 # Builds FolderTags.dll and its setup from source on a GitHub-hosted runner and, when enabled,
 # signs both through SignPath (free code signing for open source projects, see
-# installer/SIGNING.md). The DLL is signed before it goes into the setup, then the setup
-# itself is signed. Nothing is published: the files are uploaded as a workflow artifact.
+# installer/SIGNING.md). The DLL and the uninstaller (unins000.exe) are signed before they go
+# into the setup, then the setup itself is signed: Store policy 10.2.9 wants every PE file
+# signed. Nothing is published: the files are uploaded as a workflow artifact.
 name: Release
 
 on:
@@ -30,10 +31,27 @@ env:
 jobs:
   release:
     runs-on: windows-latest
+    # Each signing request waits up to 1 hour for its manual approval in SignPath.
+    timeout-minutes: 150
     env:
       SIGN: ${{ (github.event_name == 'workflow_dispatch' && inputs.sign) || (github.event_name == 'push' && vars.SIGNPATH_ENABLED == 'true') }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check SignPath settings
+        if: env.SIGN == 'true'
+        shell: pwsh
+        env:
+          HAS_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+          ORGANIZATION: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          PROJECT: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          POLICY: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+        run: |
+          if ($env:HAS_TOKEN -ne 'true' -or -not $env:ORGANIZATION -or -not $env:PROJECT -or -not $env:POLICY) {
+            throw 'Signing needs the SIGNPATH_API_TOKEN secret and the SIGNPATH_* variables (installer/SIGNING.md).'
+          }
 
       - name: Resolve version
         shell: pwsh
@@ -59,51 +77,86 @@ jobs:
         shell: pwsh
         run: ./scripts/build.ps1 -Version $env:VERSION
 
-      # --- SignPath, step 1: the DLL (artifact configuration "dll") ---
-      - name: Upload unsigned DLL
-        id: upload-dll
+      # --- SignPath, step 1: the DLL and the uninstaller (artifact configuration "binaries") ---
+      - name: Prepare DLL and uninstaller for signing
         if: env.SIGN == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: FolderTags-dll-unsigned
-          path: build/FolderTags.dll
-          if-no-files-found: error
+        shell: pwsh
+        run: |
+          # In signed-uninstaller mode the first compile only writes uninst-*.e32, then exits 3.
+          ./scripts/build-installer.ps1 -Version $env:VERSION -SkipBuild -SignedUninstallerDir signing/uninstaller
+          if ($LASTEXITCODE -ne 3) { throw "Expected the unsigned uninstaller (exit code 3), got $LASTEXITCODE." }
+          New-Item -ItemType Directory signing/unsigned | Out-Null
+          Copy-Item build/FolderTags.dll signing/unsigned/
+          # SignPath recognizes PE files by their extension: the .e32 file travels as .exe.
+          Get-ChildItem signing/uninstaller -Filter uninst-*.e32 | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path signing/unsigned "$($_.BaseName).exe")
+          }
+          exit 0
 
-      - name: Sign DLL
+      - name: Upload unsigned DLL and uninstaller
+        id: upload-binaries
         if: env.SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: FolderTags-binaries-unsigned
+          path: signing/unsigned/
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+      - name: Sign DLL and uninstaller
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
           signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          artifact-configuration-slug: dll
-          github-artifact-id: ${{ steps.upload-dll.outputs.artifact-id }}
+          artifact-configuration-slug: binaries
+          github-artifact-id: ${{ steps.upload-binaries.outputs.artifact-id }}
           wait-for-completion: true
-          output-artifact-directory: signed/dll
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signing/signed
 
-      - name: Use signed DLL
+      - name: Use signed DLL and uninstaller
         if: env.SIGN == 'true'
         shell: pwsh
-        run: Copy-Item signed/dll/FolderTags.dll build/FolderTags.dll -Force
+        env:
+          POLICY: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+        run: |
+          $signed = Get-ChildItem signing/signed -File
+          Get-AuthenticodeSignature -FilePath $signed.FullName | ForEach-Object {
+            # A test-signing certificate is untrusted; a release one must be valid.
+            if ($_.Status -eq 'NotSigned' -or ($_.Status -ne 'Valid' -and $env:POLICY -notlike 'test*')) {
+              throw "$($_.Path): $($_.Status)"
+            }
+          }
+          Copy-Item signing/signed/FolderTags.dll build/FolderTags.dll -Force
+          $signed | Where-Object Name -like 'uninst-*.exe' | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path signing/uninstaller "$($_.BaseName).e32") -Force
+          }
 
       - name: Build setup
         shell: pwsh
-        run: ./scripts/build-installer.ps1 -Version $env:VERSION -SkipBuild
+        run: |
+          $signing = if ($env:SIGN -eq 'true') { @{ SignedUninstallerDir = 'signing/uninstaller' } } else { @{} }
+          ./scripts/build-installer.ps1 -Version $env:VERSION -SkipBuild @signing
 
       # --- SignPath, step 2: the setup (artifact configuration "setup") ---
       - name: Upload unsigned setup
         id: upload-setup
         if: env.SIGN == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: FolderTags-setup-unsigned
           path: dist/FolderTags-Setup-${{ env.VERSION }}.exe
           if-no-files-found: error
+          retention-days: 1
+          overwrite: true
 
       - name: Sign setup
         if: env.SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -112,18 +165,28 @@ jobs:
           artifact-configuration-slug: setup
           github-artifact-id: ${{ steps.upload-setup.outputs.artifact-id }}
           wait-for-completion: true
-          output-artifact-directory: signed/setup
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signing/signed-setup
 
       - name: Use signed setup
         if: env.SIGN == 'true'
         shell: pwsh
-        run: Copy-Item "signed/setup/FolderTags-Setup-$env:VERSION.exe" dist/ -Force
+        env:
+          POLICY: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+        run: |
+          $setup = "signing/signed-setup/FolderTags-Setup-$env:VERSION.exe"
+          $status = (Get-AuthenticodeSignature -FilePath $setup).Status
+          if ($status -eq 'NotSigned' -or ($status -ne 'Valid' -and $env:POLICY -notlike 'test*')) {
+            throw "${setup}: $status"
+          }
+          Copy-Item $setup dist/ -Force
 
       - name: Upload release files
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: FolderTags-${{ env.VERSION }}${{ env.SIGN != 'true' && '-unsigned' || '' }}
           path: |
             dist/FolderTags-Setup-${{ env.VERSION }}.exe
             build/FolderTags.dll
           if-no-files-found: error
+          overwrite: true

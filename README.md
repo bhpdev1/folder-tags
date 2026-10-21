@@ -139,7 +139,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 
 Release binaries are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)), and every signing request is approved manually. Until the SignPath Foundation application is accepted, releases are unsigned.
 
-**Privacy policy:** this program will not transfer any information to other networked systems. Tags stay on your disk (NTFS streams and `%LOCALAPPDATA%\FolderTags`).
+**Privacy policy:** This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Tags stay on your disk (NTFS streams and `%LOCALAPPDATA%\FolderTags`).
 
 ---
 
@@ -233,7 +233,7 @@ Signature de code gratuite fournie par [SignPath.io](https://about.signpath.io/)
 
 Les binaires publiés sont compilés depuis ce dépôt par GitHub Actions ([workflow de release](.github/workflows/release.yml)), et chaque demande de signature est approuvée manuellement. Tant que la candidature à la SignPath Foundation n'est pas acceptée, les versions publiées ne sont pas signées.
 
-**Confidentialité :** ce programme ne transmet aucune information à d'autres systèmes en réseau. Les étiquettes restent sur votre disque (flux NTFS et `%LOCALAPPDATA%\FolderTags`).
+**Confidentialité :** ce programme ne transmet aucune information à d'autres systèmes en réseau, sauf demande expresse de l'utilisateur ou de la personne qui l'installe ou l'utilise. Les étiquettes restent sur votre disque (flux NTFS et `%LOCALAPPDATA%\FolderTags`).
 
 ---
 

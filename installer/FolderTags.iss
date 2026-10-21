@@ -48,6 +48,12 @@ CloseApplications=no
 RestartApplications=no
 ; {localappdata} is the installing user's: per-user tag data, created again for other users.
 UsedUserAreasWarning=no
+#ifdef SignedUninstallerDir
+; Code-signed release (see installer\SIGNING.md): unins000.exe gets the signature of the
+; uninst-*.e32 file kept in this directory, signed separately before the final compile.
+SignedUninstaller=yes
+SignedUninstallerDir={#SignedUninstallerDir}
+#endif
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
