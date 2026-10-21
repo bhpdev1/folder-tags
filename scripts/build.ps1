@@ -1,5 +1,5 @@
 # Builds FolderTags.dll (x64 Release) with the Visual Studio Build Tools.
-param([string]$Config = "Release")
+param([string]$Config = "Release", [string]$Version = "1.2.0")
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 
@@ -11,7 +11,7 @@ $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
 $env:PATH = (Split-Path $vswhere) + ";" + $env:PATH
 
 $build = Join-Path $root "build"
-$cmd = "`"$vcvars`" >nul && cmake -S `"$root`" -B `"$build`" -G Ninja -DCMAKE_BUILD_TYPE=$Config && cmake --build `"$build`""
+$cmd = "`"$vcvars`" >nul && cmake -S `"$root`" -B `"$build`" -G Ninja -DCMAKE_BUILD_TYPE=$Config -DFOLDERTAGS_VERSION=$Version && cmake --build `"$build`""
 cmd /c $cmd
 if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
 Write-Host "OK -> $build\FolderTags.dll"

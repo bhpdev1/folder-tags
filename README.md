@@ -130,6 +130,19 @@ To completely remove the extension:
 
 ---
 
+### 🔏 Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+- **Committers and reviewers:** [bhpdev1](https://github.com/bhpdev1)
+- **Approvers:** [bhpdev1](https://github.com/bhpdev1)
+
+Release binaries are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)), and every signing request is approved manually. Until the SignPath Foundation application is accepted, releases are unsigned.
+
+**Privacy policy:** this program will not transfer any information to other networked systems. Tags stay on your disk (NTFS streams and `%LOCALAPPDATA%\FolderTags`).
+
+---
+
 ### 📄 License
 
 This project is licensed under the **GNU General Public License v3.0** — see the [LICENSE](LICENSE) file for details.
@@ -209,6 +222,18 @@ cd FolderTags
 ```powershell
 .\scripts\uninstall.ps1
 ```
+
+---
+
+## 🔏 Politique de signature (Code signing policy)
+Signature de code gratuite fournie par [SignPath.io](https://about.signpath.io/), certificat de la [SignPath Foundation](https://signpath.org/).
+
+- **Contributeurs et relecteurs :** [bhpdev1](https://github.com/bhpdev1)
+- **Approbateurs :** [bhpdev1](https://github.com/bhpdev1)
+
+Les binaires publiés sont compilés depuis ce dépôt par GitHub Actions ([workflow de release](.github/workflows/release.yml)), et chaque demande de signature est approuvée manuellement. Tant que la candidature à la SignPath Foundation n'est pas acceptée, les versions publiées ne sont pas signées.
+
+**Confidentialité :** ce programme ne transmet aucune information à d'autres systèmes en réseau. Les étiquettes restent sur votre disque (flux NTFS et `%LOCALAPPDATA%\FolderTags`).
 
 ---
 

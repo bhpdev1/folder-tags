@@ -1,0 +1,31 @@
+// Version resource of FolderTags.dll, configured by CMake (FOLDERTAGS_VERSION).
+#include <winver.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+ PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS 0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DLL
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "bhpdev1"
+            VALUE "FileDescription", "FolderTags shell extension"
+            VALUE "FileVersion", "@PROJECT_VERSION@"
+            VALUE "InternalName", "FolderTags"
+            VALUE "LegalCopyright", "Copyright (C) bhpdev1. Licensed under the GNU GPLv3."
+            VALUE "OriginalFilename", "FolderTags.dll"
+            VALUE "ProductName", "FolderTags"
+            VALUE "ProductVersion", "@PROJECT_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

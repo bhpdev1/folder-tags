@@ -1,0 +1,129 @@
+# Builds FolderTags.dll and its setup from source on a GitHub-hosted runner and, when enabled,
+# signs both through SignPath (free code signing for open source projects, see
+# installer/SIGNING.md). The DLL is signed before it goes into the setup, then the setup
+# itself is signed. Nothing is published: the files are uploaded as a workflow artifact.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Product version (x.y.z)
+        required: true
+        default: '1.2.0'
+      sign:
+        description: Sign with SignPath (needs the SignPath secret and variables)
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  # Inno Setup 6.7.3, checksum from the winget manifest (JRSoftware.InnoSetup).
+  INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe
+  INNO_SHA256: 9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      SIGN: ${{ (github.event_name == 'workflow_dispatch' && inputs.sign) || (github.event_name == 'push' && vars.SIGNPATH_ENABLED == 'true') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version
+        shell: pwsh
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $v = if ($env:EVENT -eq 'push') { $env:TAG.TrimStart('v') } else { $env:INPUT_VERSION }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Version must be x.y.z, got '$v'." }
+          "VERSION=$v" >> $env:GITHUB_ENV
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          Invoke-WebRequest $env:INNO_URL -OutFile $exe
+          if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne $env:INNO_SHA256) { throw 'Inno Setup checksum mismatch.' }
+          $p = Start-Process $exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Inno Setup install failed ($($p.ExitCode))." }
+
+      - name: Build FolderTags.dll
+        shell: pwsh
+        run: ./scripts/build.ps1 -Version $env:VERSION
+
+      # --- SignPath, step 1: the DLL (artifact configuration "dll") ---
+      - name: Upload unsigned DLL
+        id: upload-dll
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: FolderTags-dll-unsigned
+          path: build/FolderTags.dll
+          if-no-files-found: error
+
+      - name: Sign DLL
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: dll
+          github-artifact-id: ${{ steps.upload-dll.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed/dll
+
+      - name: Use signed DLL
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: Copy-Item signed/dll/FolderTags.dll build/FolderTags.dll -Force
+
+      - name: Build setup
+        shell: pwsh
+        run: ./scripts/build-installer.ps1 -Version $env:VERSION -SkipBuild
+
+      # --- SignPath, step 2: the setup (artifact configuration "setup") ---
+      - name: Upload unsigned setup
+        id: upload-setup
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: FolderTags-setup-unsigned
+          path: dist/FolderTags-Setup-${{ env.VERSION }}.exe
+          if-no-files-found: error
+
+      - name: Sign setup
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: setup
+          github-artifact-id: ${{ steps.upload-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed/setup
+
+      - name: Use signed setup
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: Copy-Item "signed/setup/FolderTags-Setup-$env:VERSION.exe" dist/ -Force
+
+      - name: Upload release files
+        uses: actions/upload-artifact@v7
+        with:
+          name: FolderTags-${{ env.VERSION }}${{ env.SIGN != 'true' && '-unsigned' || '' }}
+          path: |
+            dist/FolderTags-Setup-${{ env.VERSION }}.exe
+            build/FolderTags.dll
+          if-no-files-found: error

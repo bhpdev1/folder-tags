@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(FolderTags LANGUAGES CXX)
+# Product version, shared with the setup (scripts/build.ps1 -Version). Code signing requires the
+# same product name and version in every signed file.
+set(FOLDERTAGS_VERSION "1.2.0" CACHE STRING "Product version (x.y.z)")
+project(FolderTags VERSION ${FOLDERTAGS_VERSION} LANGUAGES CXX RC)
+configure_file(src/version.rc.in ${CMAKE_BINARY_DIR}/version.rc @ONLY)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,6 +18,7 @@ add_library(FolderTags SHARED
     src/index.cpp
     src/overlay.cpp
     src/FolderTags.def
+    ${CMAKE_BINARY_DIR}/version.rc
 )
 
 target_compile_definitions(FolderTags PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00)
